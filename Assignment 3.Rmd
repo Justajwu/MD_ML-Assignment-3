@@ -1,0 +1,13 @@
+---
+title: "Assignment 3"
+author: "James Wu, Ravi Sojitra, Lauren Broffman"
+date: "October 15, 2018"
+output: pdf_document
+---
+
+```{r,warning=F,message=FALSE,echo=F}
+require(tidyverse)
+require(stargazer)
+require(MASS)
+require(library)
+```
