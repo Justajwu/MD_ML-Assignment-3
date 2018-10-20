@@ -1,0 +1,99 @@
+---
+title: "HW_3_MD_ML"
+author: "Lauren Broffman"
+date: "10/20/2018"
+output: html_document
+---
+
+# Don't make changes to this file.
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+source('library.R')
+
+
+library(dplyr)
+library(tidyverse)
+library(lubridate)
+library(ROCR)
+library(foreach)
+```
+
+```{r}
+
+convert.offense.code <- function(df, codes) {
+offenses <- df["offense"][as.integer(codes)]
+offenses <- factor(offenses, levels=df$offense)
+offenses
+}
+
+```
+
+```{r}
+shroff <- function(df, offense.codes.df) {
+  
+  # 0) drop columns that won't be used, either because they're irrelevant or 
+# seem to be coded badly
+df <- df %>% select(-recstat, -officrid, -sumoffen, -compyear, -comppct)
+
+
+# 1) date and time (except for weird times)
+df <- df %>% mutate(datestop = sprintf("%08d", as.integer(datestop)),
+                                timestop = sprintf("%04d", as.integer(timestop)),
+                                timestamp = mdy_hm(paste(datestop, timestop))) %>% 
+  select(-datestop, -timestop)  
+
+# 2) location information and serial number
+df <- df %>% mutate(precinct = as.factor(pct), xcoord = as.integer(xcoord),
+                                ycoord = as.integer(ycoord), serial = ser_num) %>% 
+  select(-pct, -ser_num)
+
+
+# 3) recode y/n variables
+df <- df %>% mutate(frisked = recode.yn(frisked), 
+                                searched = recode.yn(searched), 
+                                extra.reports = recode.yn(adtlrept),
+                                reason.explained = recode.yn(explnstp), 
+                                others.stopped = recode.yn(othpers),
+                                arrested = recode.yn(arstmade),
+                                summons.issued = recode.yn(sumissue),
+                                radio.run = recode.yn(radio)
+) 
+
+# 4) recode other binary variables and drop irrelevant variables
+df <- df %>% mutate(inside = recode.io(inout), observation.period = perobs,
+                                suspected.crime = convert.offense.code(offense.codes.df, detailcm),
+                                officer.verbal = recode.0V(offverb),
+                                officer.shield = recode.0S(offshld),
+                                arrested.reason = convert.arrest.reasons(arstoffn)) %>% 
+  select(-adtlrept, -explnstp, -othpers, -arstmade, -sumissue, -radio, -inout, 
+         -perobs, -detailcm, -offverb, -offshld, -arstoffn)
+
+
+
+df
+}
+
+test <- shroff(sqf.data.full, offense.codes)
+
+```
+
+```{r}
+
+offense.codes <- read.delim('offense-codes.tsv', header=FALSE, col.names=c('code','offense'))
+offense.codes$offense <- tolower(offense.codes$offense)
+
+sqf.data.full <- foreach(year=2008:2009, .combine='rbind') %dopar% {
+filename <- paste0('./', year, '.csv')
+this.data <- read_csv(filename)
+this.data
+}
+```
+
+```{r}
+offense.codes <- read.delim('offense-codes.tsv', header=FALSE, col.names=c('code','offense'))
+
+
+
+```
