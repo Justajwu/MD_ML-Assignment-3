@@ -58,9 +58,14 @@ cat('the auc score is ', 100*test.perf@y.values[[1]], "\n")
 #IV. Draw 10000 random pairs from 2009
 set.seed(2009)
 True.2009.sample <- sample(which(sqf.data.2009$found.weapon == T),10000)
-False.2009.sample <- sample(which(sqf.data.2009$found.weapon ==F),10000)
+False.2009.sample <- sample(which(sqf.data.2009$found.weapon == F),10000)
 
 #Threshold?? = 0.5??
+
+model.predictions.2009 <- sqf.data.2009$predicted.probability >= threshold
+model.predictions.for.true <- model.predictions.2009[True.2009.sample] > model.predictions.2009[False.2009.sample]
+
+
 
 
 #-------------------------------------------------------
