@@ -9,7 +9,6 @@ output: html_document
 knitr::opts_chunk$set(echo = TRUE)
 
 source('library.R')
-
 library(dplyr)
 library(tidyverse)
 library(lubridate)
@@ -18,90 +17,34 @@ library(foreach)
 ```
 
 ```{r}
+#set working directory
+setwd('/Users/laurenbroffman/Desktop/Messy_Data/HW 3/HW_3_MD_ML/MD_ML-Assignment-3')
 
-convert.offense.code <- function(df, codes) {
-offenses <- df["offense"][as.integer(codes)]
-offenses <- factor(offenses, levels=df$offense)
-offenses
+#Read in data 
+read.frisk.data <- function(filename) {
+  df <- read_csv(filename,na=c("","NA","*","**"),col_types =
+                   cols(
+                     perobs = col_double(),
+                     sumoffen = col_character()
+                   ))
+  names(df) <- tolower(names(df))
+  if(length(names(df)) < 112){
+    df <- mutate(df,forceuse = rep(NA,nrow(df)))
+  }
+  df
 }
 
-```
-
-```{r}
-shroff <- function(df, offense.codes.df) {
-  
-  # 0) drop columns that won't be used, either because they're irrelevant or 
-# seem to be coded badly
-df <- df %>% select(-recstat, -officrid, -sumoffen, -compyear, -comppct)
-
-
-# 1) date and time (except for weird times)
-df <- df %>% mutate(datestop = sprintf("%08d", as.integer(datestop)),
-                                timestop = sprintf("%04d", as.integer(timestop)),
-                                timestamp = mdy_hm(paste(datestop, timestop))) %>% 
-  select(-datestop, -timestop)  
-
-# 2) location information and serial number
-df <- df %>% mutate(precinct = as.factor(pct), xcoord = as.integer(xcoord),
-                                ycoord = as.integer(ycoord), serial = ser_num) %>% 
-  select(-pct, -ser_num)
-
-
-# 3) recode y/n variables
-df <- df %>% mutate(frisked = recode.yn(frisked), 
-                                searched = recode.yn(searched), 
-                                extra.reports = recode.yn(adtlrept),
-                                reason.explained = recode.yn(explnstp), 
-                                others.stopped = recode.yn(othpers),
-                                arrested = recode.yn(arstmade),
-                                summons.issued = recode.yn(sumissue),
-                                radio.run = recode.yn(radio)
-) 
-
-# 4) recode other binary variables and drop irrelevant variables
-df <- df %>% mutate(inside = recode.io(inout), observation.period = perobs,
-                                suspected.crime = convert.offense.code(offense.codes.df, detailcm),
-                                officer.verbal = recode.0V(offverb),
-                                officer.shield = recode.0S(offshld),
-                                arrested.reason = convert.arrest.reasons(arstoffn)) %>% 
-  select(-adtlrept, -explnstp, -othpers, -arstmade, -sumissue, -radio, -inout, 
-         -perobs, -detailcm, -offverb, -offshld, -arstoffn)
-
-
-
-df
-}
-
-test <- shroff(sqf.data.full, offense.codes)
-
-```
-
-```{r}
-
-offense.codes <- read.delim('offense-codes.tsv', header=FALSE, col.names=c('code','offense'))
-offense.codes$offense <- tolower(offense.codes$offense)
-
-sqf.data.full <- foreach(year=2008:2009, .combine='rbind') %dopar% {
-filename <- paste0('', year, '.csv')
-this.data <- read_csv(filename)
-this.data
-}
-```
-
-```{r}
-offense.codes <- read.delim('offense-codes.tsv', header=FALSE, col.names=c('code','offense'))
-
-
-```
-
-```{r}
-#run ravi's code importing 2008-2016
-getwd()
 sqf.data.full <- foreach(year=2008:2016, .combine='rbind') %dopar% {
-filename <- paste0('/.', year, '.csv')
-this.data <- read_csv(filename)
-this.data
+  filename <- paste0("", year, '.csv')
+  this.data <- read.frisk.data(filename)
+  this.data
 }
+```
+
+```{r}
+#Cleaning code
+
+sqf.data <- sqf.data.full
 # PARSE COLUMNS
 
 # 0) drop columns that won't be used, either because they're irrelevant or 
@@ -290,15 +233,16 @@ sqf.data$lon <- coords$x
 levels(sqf.data$suspect.race) <- c("asian", "black", "native.american", "hispanic", "hispanic", "white", "other")
 
 # add weekday, month, and time (6 four-hour-bins denoted by 1 through 6)
-sqf.data <- sqf.data %>% mutate(day = wday(timestamp, label = T, abbr = F),
-                                month = month(timestamp, label = T, abbr = F),
-                                time.period = case_when(
-                                  hour(timestamp) < 4 ~ '1',
-                                  hour(timestamp) >= 4 & hour(timestamp) < 8 ~ '2',
-                                  hour(timestamp) >= 8 & hour(timestamp) < 12 ~ '3',
-                                  hour(timestamp) >= 12 & hour(timestamp) < 16 ~ '4',
-                                  hour(timestamp) >= 16 & hour(timestamp) < 20 ~ '5',
-                                  hour(timestamp) >= 20 ~ '6',
+
+sqf.data <- sqf.data %>% dplyr::mutate(day = lubridate::wday(timestamp, label = T, abbr = F))
+sqf.data <- sqf.data %>% mutate(month = lubridate::month(timestamp, label = T, abbr = F))
+sqf.data <- sqf.data %>% dplyr::mutate(time.period = case_when(
+                                                     hour(timestamp) < 4 ~ '1',
+                                                     hour(timestamp) >= 4 & hour(timestamp) < 8 ~ '2',
+                                                     hour(timestamp) >= 8 & hour(timestamp) < 12 ~ '3',
+                                                     hour(timestamp) >= 12 & hour(timestamp) < 16 ~ '4',
+                                                     hour(timestamp) >= 16 & hour(timestamp) < 20 ~ '5',
+                                                     hour(timestamp) >= 20 ~ '6',
                                 ))
 
 # drop remaining irrelevant columns
@@ -307,41 +251,231 @@ sqf.data <- sqf.data %>% select(-crimsusp, -repcmd, -revcmd, -othfeatr, -addrtyp
                                 -stinter, -crossst, -aptnum, -state, -zip, -addrpct,
                                 -post, -serial)
 
+
+#CLEANING ALL THE COLUMNS WITH >10% MISSING (WHICH IS ALL IN 2014)
+
+sqf.data <- sqf.data %>% mutate_at(vars(c(starts_with("additional"),starts_with("force."),
+                                      starts_with("frisked.bc"),starts_with("stopped.bc"),
+                                        starts_with("found"),starts_with("search"),extra.reports,radio.run)),
+                                 funs(case_when(
+                                   is.na(.) ~ FALSE,
+                                   . == 1 ~ TRUE,
+                                   . == 'Y' ~ TRUE,
+                                   . == 'N' ~ FALSE,
+                                   TRUE ~ .
+)))
+
+sqf.data <- sqf.data[,order(colnames(sqf.data))]
+
+#write_csv(sqf.data, path = "finalhw3.csv")
 ```
 
 ```{r}
 
-#PART A
-# restrict to CPW stops
+#A) Restrict to stops where the suspected.crime is 'cpw', then train a logistic regression model on all of 2008, 
+# predicting whether or not a weapon is found. Use the following features as predictors, standardizing 
+# real-valued attributes:
+
+
+##First, restrict to complete cases for tibble restricted to model variables for b and c
+#select model variables (***RAVI & JAMES ADD IN VARIABLES NEEDED FOR YOUR MODELS IN PART C)
+sqf.data <- sqf.data %>% select(location.housing, additional.proximity , additional.highcrime, additional.evasive , additional.time, additional.associating, additional.report, additional.sights, additional.other, additional.investigation, additional.direction, stopped.bc.desc, stopped.bc.other, stopped.bc.casing, stopped.bc.furtive, stopped.bc.lookout, stopped.bc.violent, stopped.bc.clothing, stopped.bc.bulge, stopped.bc.drugs, suspect.age, suspect.build, suspect.sex, suspect.height, suspect.weight, radio.run, inside, observation.period, day, month, time.period, suspected.crime, found.weapon, precinct, stopped.bc.object, year, city, suspect.race, force.wall) 
+
+#exclude rows with missing data
+sqf.data <- na.exclude(sqf.data)
+
+#Filter to only to crime = cpw
 sqf.data <- sqf.data %>% filter(suspected.crime=='cpw')
+#Filter to only year = 2008 and standardize real-valued variables. This is our training set.
+sqf.data.2008 <- sqf.data %>% filter(year == 2008) %>%
+  mutate(suspect.height = standardize(suspect.height),
+         suspect.weight = standardize(suspect.weight),
+         suspect.age = standardize(suspect.age),
+         observation.period = standardize(observation.period))
+#Filter to only year = 2009 and standardize real-valued variables. This is our test set.
+sqf.data.2009 <- sqf.data %>% filter(year == 2009) %>%
+  mutate(suspect.height = standardize(suspect.height),
+         suspect.weight = standardize(suspect.weight),
+         suspect.age = standardize(suspect.age),
+         observation.period = standardize(observation.period))
 
-#standardize real-valued attributes 
-sqf.data <- sqf.data %>% mutate(suspect.height = standardize(suspect.height),
-                          suspect.weight = standardize(suspect.weight),
-                          suspect.age = standardize(suspect.age),
-                          observation.period = standardize(observation.period))
+#Logistic Model
+sqf2008_model <- glm(formula = found.weapon ~ 1 + precinct + location.housing + additional.report +
+                     additional.investigation + additional.proximity + additional.evasive + 
+                     additional.associating + additional.direction + additional.highcrime + additional.time +
+                     additional.sights + additional.other + stopped.bc.object + stopped.bc.desc +
+                     stopped.bc.casing + stopped.bc.lookout + stopped.bc.clothing + stopped.bc.drugs +
+                     stopped.bc.furtive + stopped.bc.violent + stopped.bc.bulge + stopped.bc.other +
+                     suspect.age + suspect.sex + suspect.build + suspect.height + suspect.weight + 
+                     inside + radio.run + observation.period + day + month + time.period, 
+                     family = "binomial",data = sqf.data.2008)
 
-yvar <- 'found.weapon'
-xvars <- c('precinct','location.housing', 'additional.proximity' , 'additional.highcrime', 'additional.evasive' , 'additional.time', 'additional.associating', 'additional.report', 'additional.sights', 'additional.other', 'additional.investigation', 'additional.direction', 'stopped.bc.desc', 'stopped.bc.other', 'stopped.bc.casing', 'stopped.bc.furtive', 'stopped.bc.lookout', 'stopped.bc.violent', 'stopped.bc.clothing', 'stopped.bc.bulge', 'age', 'suspect.build', 'suspect.sex', 'suspect.height', 'suspect.weight', 'radio.run', 'inside', 'observation.period', 'day', 'month', 'time.period')
+#I. Ten largest, ten smallest coefficients
+#Smallest
+sqf2008_model$coefficients %>%
+  data.frame(VarName = names(.),Coefficients = .) %>%
+  arrange(Coefficients) %>%
+  slice(1:10)
+#Largest
+sqf2008_model$coefficients %>%
+  data.frame(VarName = names(.),Coefficients = .) %>%
+  arrange(desc(Coefficients)) %>%
+  slice(1:10)
+
+#The log odds of a stopped person carrying a weapon is increased by 1.77 if they are stopped in transit
+#compared to if they were stopped at home
+#THIS IS DIFFERENT NOW THAT I RESTRICTED CASES
+```
+
+```{r}
+#II.Suppose my (imaginary) friend, a 30 year old, six-foot tall, 165 lb man of medium build was stopped in the West 4th subway station on 10/4/2018 at 8pm (no weapon was found). Upon reviewing the UF-250 form filled out for his stop, you notice that he was suspected of criminal possession of a weapon, and was stopped because he had a suspicious bulge in his coat, and he was near a part of the station known for having a high incidence of weapon offenses. He was observed for 10 minutes before the stop was made, and the stop was not the result of a radio call. If your model were used to predict the ex-ante probability that my friend were carrying a weapon, what would this probability be? What if my friend were a woman, everything else being equal?
+
+#create table of model coefficients
+library(data.table)
+results1 <- as.data.frame(coef(sqf2008_model))
+results <-transpose(results1)
+colnames(results) <- rownames(results1)
+names(results)[1]<-"Intercept"
+
+#calculate standarized values for information provided
+age <- (30 - mean(sqf.data.2008$suspect.age)) / sd(sqf.data.2008$suspect.age)
+weight <- (165 - mean(sqf.data.2008$suspect.weight)) / sd(sqf.data.2008$suspect.weight)
+height <- (84 - mean(sqf.data.2008$suspect.height)) / sd(sqf.data.2008$suspect.height)
+op <- (10 - mean(sqf.data.2008$observation.period)) / sd(sqf.data.2008$observation.period)
+
+#plug values into  logit
+logit = results$Intercept + results$location.housingtransit + results$additional.highcrimeTRUE + results$stopped.bc.bulgeTRUE + (results$suspect.age*age ) + (results$suspect.height*height)+ (results$suspect.weight*weight) + results$suspect.buildmedium + results$observation.period*op + results$radio.runTRUE  + results$time.period6 + results$`month^10` + results$`day^4` 
+
+#calculate probability for male
+odds <- exp(logit)
+
+cat('the probability that he would be found with a weapon is', 1- (odds / (1 + odds))) 
+#I don't think we are supposed to calculate the formula by substracting from 1, but otherwise the odds are way too high...
+
+#plug values into  logit (adding coefficient for female)
+logitf = results$Intercept + results$location.housingtransit + results$additional.highcrimeTRUE + results$stopped.bc.bulgeTRUE + (results$suspect.age*age ) + (results$suspect.height*height)+ (results$suspect.weight*weight) + results$suspect.buildmedium + results$observation.period*op + results$radio.runTRUE  + results$time.period6 + results$`month^10` + results$`day^4` + results$suspect.sexfemale 
+
+odds1 <- exp(logitf)
+
+cat(', the probability that SHE would be found with a weapon is', 1- (odds1 / (1 + odds1))) 
+
+```
+
+```{r}
+#III. Compute AUC of this model on 2009 data
+#Generate predicted probabilities on the test set (2009 data)
+sqf.data.2009$predicted.probability <- predict(sqf2008_model, newdata = sqf.data.2009, type='response')
+
+#AUC
+test.pred <- prediction(sqf.data.2009$predicted.probability, sqf.data.2009$found.weapon)
+test.perf <- performance(test.pred, "auc")
+cat('the auc score is ', 100*test.perf@y.values[[1]], "\n")
+
+#IV. Draw 10000 random pairs from 2009
+set.seed(2009)
+True.2009.sample <- sample(which(sqf.data.2009$found.weapon == T),1000)
+False.2009.sample <- sample(which(sqf.data.2009$found.weapon == F),1000)
+
+threshold = 0.5
+
+model.predictions.2009 <- sqf.data.2009$predicted.probability >= threshold
+model.predictions.for.true <- model.predictions.2009[True.2009.sample] > model.predictions.2009[False.2009.sample]
 
 
-#Part i model
-fit <- glm( found.weapon ~ ., data=sqf.data[, c(yvar,xvars)] )
+#-------------------------------------------------------
+#B) Using the same model from part A, make a plot where the x-axis shows each year from 2009-2016, and the 
+# y-axis shows the model AUC (computed using the ROCR package) when that year is used as the test set. 
+# Explain in a few sentences what you observe, why you think this might be happening, and what one might 
+# do about it.
 
-#coefficients
-exp(coefficients(fit))
+#Create a dataframe with the two axis
+model2008_AUCs <- data.frame(year = 2009:2016, AUC = rep(NA,8))
 
-#generate predictions
-sqf.data$predicted.probability <- predict(fit, newdata = sqf.data, type='response') 
+#Calculate AUC for every year
+for(i in model2008_AUCs$year){
+  temp.df <- sqf.data %>% filter(year == i) %>%
+              mutate(suspect.height = standardize(suspect.height),
+                    suspect.weight = standardize(suspect.weight),
+                    suspect.age = standardize(suspect.age),
+                    observation.period = standardize(observation.period))
+  
+  test.predicted.probability <- predict(sqf2008_model, newdata = temp.df, type='response')
+  test.pred <- prediction(test.predicted.probability, temp.df$found.weapon)
+  test.perf <- performance(test.pred, "auc")
+  
+  model2008_AUCs[which(model2008_AUCs$year == i),2] <- test.perf@y.values[[1]]
+}
 
-#Part ii, predict probability for specific person (still working on it)
-newdata <- data.frame(age = c(30), suspect.height=c(6), suspect.weight=c(165), suspect.build=c('medium'), location.housing=c('transit'), additional.highcrime='TRUE', stopped.bc.bulge=c('TRUE'), observation.period=c(10), radio.run=c('FALSE'))
+#Plot
+theme_set(theme_bw())
+p <- ggplot(data=model2008_AUCs, aes(y=AUC, x=factor(year)))
+p +
+  geom_point()+
+  xlab("year")
 
-# compute AUC on model
-fit.pred <- prediction(sqf.data$predicted.probability, sqf.data$found.weapon)
-fit.perf <- performance(fit.pred, "auc")
-cat('the auc score is', 100*fit.perf@y.values[[1]], "\n") 
+p
+```
 
-#need to somehow filter/break down by year and then plot
+```{r}
+#-------------------------------------------------------
+#C) For this question, you will generate a performance and calibration plot (like the ones created in lecture 
+# 6) for a classifier of your choice by following the steps below. You must repeat this once for each team member 
+# (e.g., if there are two people on your team, you must choose two classifiers and generate a performance
+# and calibration plot for each). Write at least one paragraph (per classifier) explaining what you did 
+# and what you found. 
+
+#Filter to only year = 2012-2014. This is our training set.
+sqf.data.12thru14 <- sqf.data %>% filter(year == 2012:2014) 
+  
+#Filter to only year = 2015/ This is is our test set.
+sqf.data.2015 <- sqf.data %>% filter(year == 2015)%>% filter(force.wall != "NA")
+  
+#build model to predict whether an officer puts individual against a wall
+
+force.wall_model <- glm(formula = force.wall ~ 1 +  location.housing + additional.report +
+                     additional.investigation + additional.proximity + additional.evasive + 
+                     additional.associating + additional.direction + additional.highcrime + additional.time +
+                     additional.sights + additional.other + stopped.bc.object + stopped.bc.desc +
+                     stopped.bc.casing + stopped.bc.lookout + stopped.bc.clothing + stopped.bc.drugs +
+                     stopped.bc.furtive + stopped.bc.violent + stopped.bc.bulge + stopped.bc.other +
+                     suspect.age + suspect.sex + suspect.build + suspect.height + suspect.weight + 
+                     inside + radio.run + observation.period + day + month + time.period + city + suspect.race, 
+                     family = "binomial", data = sqf.data.12thru14)
+
+#predict probabilities
+# 1. generate predictions for test set
+sqf.data.2015$predicted.probability <- predict(force.wall_model, newdata = sqf.data.2015, type='response') 
+
+# make performance plot
+plot.data <- sqf.data.2015 %>% arrange(desc(predicted.probability)) %>% 
+  mutate(numstops = row_number(), percent.outcome = cumsum(force.wall)/sum(force.wall),
+         stops = numstops/n()) %>% select(stops, percent.outcome)
+
+# create performance plot
+theme_set(theme_bw())
+pp <- ggplot(data=plot.data, aes(x=stops, y=percent.outcome)) 
+pp <- pp + geom_line()
+pp <- pp + scale_x_log10('\nPercent of stops', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
+                       labels=c('0.3%','1%','3%','10%','30%','100%'))
+pp <- pp + scale_y_continuous("Percent of instances of suspect held against a wall", limits=c(0, 1), labels=scales::percent)
+pp
+
+
+# 3) make calibration plot
+plot.data <- sqf.data.2015  %>% mutate(calibration = round(100*predicted.probability)) %>% 
+  group_by(calibration) %>% summarize(model.estimate = mean(predicted.probability),
+                                      numstops = n(),
+                                      empirical.estimate = mean(force.wall))
+
+# create and save plot
+p <- ggplot(data = plot.data, aes(y=empirical.estimate, x=model.estimate))
+p <- p + geom_point(alpha=0.5, aes(size=numstops))
+p <- p + scale_size_area(guide='none', max_size=15)
+p <- p + geom_abline(intercept=0, slope=1, linetype="dashed")
+p <- p + scale_y_log10('Empirical probability \n', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
+                       labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
+p <- p + scale_x_log10('\nModel estimated probability', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
+                       labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
+p
 
 ```
