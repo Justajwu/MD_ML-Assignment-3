@@ -4,6 +4,7 @@
 
 #Load in libraries/data
 require(tidyverse)
+require(data.table)
 
 filelocation <- "./Data/sqf_08_16.csv"
 sqf_08_16 <- read_csv(filelocation)
@@ -70,6 +71,27 @@ sqf2008_model$coefficients %>%
 #compared to if they were stopped at home.
 
 #II.
+results1 <- as.data.frame(coef(sqf2008_model))
+results <-transpose(results1)
+colnames(results) <- rownames(results1)
+names(results)[1]<-"Intercept"
+
+
+#plug values into  logit
+logit = results$Intercept + results$location.housingtransit + results$additional.highcrimeTRUE + results$stopped.bc.bulgeTRUE + (results$suspect.age*age ) + (results$suspect.height*height)+ (results$suspect.weight*weight) + results$suspect.buildmedium + results$observation.period*op  + results$time.period6 + results$`month^10` + results$`day^4` 
+
+#calculate probability for male
+odds <- exp(logit)
+
+cat('the probability that he would be found with a weapon is', (odds / (1 + odds))) 
+#I don't think we are supposed to calculate the formula by substracting from 1, but otherwise the odds are way too high...
+
+#plug values into  logit (adding coefficient for female)
+logitf = results$Intercept + results$location.housingtransit + results$additional.highcrimeTRUE + results$stopped.bc.bulgeTRUE + (results$suspect.age*age ) + (results$suspect.height*height)+ (results$suspect.weight*weight) + results$suspect.buildmedium + results$observation.period*op + results$radio.runTRUE  + results$time.period6 + results$`month^10` + results$`day^4` + results$suspect.sexfemale 
+
+odds1 <- exp(logitf)
+
+cat(', the probability that SHE would be found with a weapon is', (odds1 / (1 + odds1))) 
 
 
 #III. Compute AUC of this model on 2009 data
@@ -220,6 +242,66 @@ James.p2
 #model is mostly underestimating the actual found contrabands.
 
 
+#C)Lauren C
 
+#Filter to only year = 2012-2014. This is our training set.
+sqf.data.12thru14 <- sqf.data %>% filter(year == 2012:2014) 
+  
+#Filter to only year = 2015/ This is is our test set.
+sqf.data.2015 <- sqf.data %>% filter(year == 2015)%>% filter(force.wall != "NA")
+  
+#build model to predict whether an officer puts individual against a wall
+
+force.wall_model <- glm(formula = force.wall ~ 1 +  location.housing + additional.report +
+                     additional.investigation + additional.proximity + additional.evasive + 
+                     additional.associating + additional.direction + additional.highcrime + additional.time +
+                     additional.sights + additional.other + stopped.bc.object + stopped.bc.desc +
+                     stopped.bc.casing + stopped.bc.lookout + stopped.bc.clothing + stopped.bc.drugs +
+                     stopped.bc.furtive + stopped.bc.violent + stopped.bc.bulge + stopped.bc.other +
+                     suspect.age + suspect.sex + suspect.build + suspect.height + suspect.weight + 
+                     inside + radio.run + observation.period + day + month + time.period + city + suspect.race, 
+                     family = "binomial", data = sqf.data.12thru14)
+
+#predict probabilities
+# 1. generate predictions for test set
+sqf.data.2015$predicted.probability <- predict(force.wall_model, newdata = sqf.data.2015, type='response') 
+
+# make performance plot
+plot.data <- sqf.data.2015 %>% arrange(desc(predicted.probability)) %>% 
+  mutate(numstops = row_number(), percent.outcome = cumsum(force.wall)/sum(force.wall),
+         stops = numstops/n()) %>% select(stops, percent.outcome)
+
+# create performance plot
+theme_set(theme_bw())
+pp <- ggplot(data=plot.data, aes(x=stops, y=percent.outcome)) 
+pp <- pp + geom_line()
+pp <- pp + scale_x_log10('\nPercent of stops', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
+                       labels=c('0.3%','1%','3%','10%','30%','100%'))
+pp <- pp + scale_y_continuous("Percent of instances of suspect held against a wall", limits=c(0, 1), labels=scales::percent)
+pp
+
+
+# 3) make calibration plot
+plot.data <- sqf.data.2015  %>% mutate(calibration = round(100*predicted.probability)) %>% 
+  group_by(calibration) %>% summarize(model.estimate = mean(predicted.probability),
+                                      numstops = n(),
+                                      empirical.estimate = mean(force.wall))
+
+# create and save plot
+p <- ggplot(data = plot.data, aes(y=empirical.estimate, x=model.estimate))
+p <- p + geom_point(alpha=0.5, aes(size=numstops))
+p <- p + scale_size_area(guide='none', max_size=15)
+p <- p + geom_abline(intercept=0, slope=1, linetype="dashed")
+p <- p + scale_y_log10('Empirical probability \n', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
+                       labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
+p <- p + scale_x_log10('\nModel estimated probability', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
+                       labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
+p
+
+
+
+
+#
 #------------------------------------------------------------------------------
+
 
