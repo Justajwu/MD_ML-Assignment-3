@@ -1,6 +1,8 @@
 ---
 title: "Question 2"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
@@ -76,6 +78,7 @@ interpreted.
   arrange(Coefficients) %>%
   slice(1:10))
 ```
+
 ``` {r}
 # Largest
 (largest.coefficients<- 
@@ -195,12 +198,12 @@ model2008_AUCs <- data.frame(year = 2009:2016, AUC = rep(NA,8))
 
 #Calculate AUC for every year
 for(i in model2008_AUCs$year){
-  temp.df <- sqf.data %>% filter(year == i)
+  temp.df <- sqf.data %>% filter(year == i &)
   
   test.predicted.probability <- predict(sqf2008_model, newdata = temp.df, type='response')
   test.pred <- prediction(test.predicted.probability, temp.df$found.weapon)
   test.perf <- performance(test.pred, "auc")
-  
+
   model2008_AUCs[which(model2008_AUCs$year == i),2] <- test.perf@y.values[[1]]
 }
 
@@ -220,7 +223,7 @@ once for each team member (e.g., if there are two people on your team, you must 
 classifiers and generate a performance and calibration plot for each). Write at least one
 paragraph (per classifier) explaining what you did and what you found.
 
-## Answer 2C: Model 1
+## Answer 2C: Model 1 [James Wu]
 ``` {r}
 #James read in filter to arrest.reasons 
 James.data <- sqf_08_16 %>% filter(grepl('marihuana|substance',suspected.crime))
@@ -294,16 +297,19 @@ James.p2 <- James.p2 + scale_x_log10('\nModel estimated probability', limits=c(.
 James.p2
 ```
 
-We decided to use found.contraband as the first classifier.
-For this, we first subsetted the full sqf data to only include 
+For our first classifier, 
+ we use a logistic regression model with
+ `found.contraband` as the response variable.
+To do this, we first subsetted the full dataset to only include 
  criminal possession or sale of 'marihuana' 
  and 'controlled substance' as suspected reasons.
-We want to build a model to predict when in the situations when 
+We want to build a model to predict when anything is found,
+ in the situations when 
  police stop someone with the suspicion of drugs, 
  they find anything.
-The training set comprises of the data from 2008-2010 and the test data is 2011 data, with the assumption that going further
-out would make the results less accurate.
-I ran a logistic model on:
+The training set comprises of the data from 2008-2010 and the test data is 2011 data,
+ with the assumption that going further out would make the results less accurate.
+For this model, we used the following predictors:
  - precinct;
  - whether the stop occurred in transit, housing, or on the street;
  - the ten additional stop circumstances (additional.*);
@@ -319,8 +325,112 @@ The calibration plot shows that our
  model is mostly underestimating the actual found contrabands.
 
 
-## Answer 2C: Model 2
+## Answer 2C: Model 2 [Lauren Broffman]
 
 ``` {r}
+#Filter to only year = 2012-2014 & convert variable types to factors as necessary and standardize real-value variables. This is our training set.
+sqf.data.12thru14 <- sqf.data %>% filter(year == 2012:2014) %>% 
+  mutate(suspect.race = as.factor(suspect.race), 
+         suspect.build = as.factor(suspect.build),
+         suspect.sex = as.factor(suspect.sex),
+         location.housing = as.factor(location.housing),
+         day = as.factor(day),
+         month = as.factor(month),
+         time.period = as.factor(time.period),
+         precinct = as.factor(precinct)) %>%
+  mutate(suspect.height = standardize(suspect.height),
+         suspect.weight = standardize(suspect.weight),
+         suspect.age = standardize(suspect.age),
+         observation.period = standardize(observation.period))
+  
+#Filter to only year = 2015/ This is is our test set.
+sqf.data.2015 <- sqf_08_16 %>% filter(year == 2015) %>% 
+  mutate(suspect.race = as.factor(suspect.race), 
+         suspect.build = as.factor(suspect.build),
+         suspect.sex = as.factor(suspect.sex),
+         location.housing = as.factor(location.housing),
+         day = as.factor(day),
+         month = as.factor(month),
+         time.period = as.factor(time.period),
+         precinct = as.factor(precinct)) %>%
+  mutate(suspect.height = standardize(suspect.height),
+         suspect.weight = standardize(suspect.weight),
+         suspect.age = standardize(suspect.age),
+         observation.period = standardize(observation.period))
+  
+#build model to predict whether an officer puts individual against a wall
 
+force.wall_model <- glm(formula = force.wall ~ 1 +  location.housing + additional.report +
+                     additional.investigation + additional.proximity + additional.evasive + 
+                     additional.associating + additional.direction + additional.highcrime + additional.time +
+                     additional.sights + additional.other + stopped.bc.object + stopped.bc.desc +
+                     stopped.bc.casing + stopped.bc.lookout + stopped.bc.clothing + stopped.bc.drugs +
+                     stopped.bc.furtive + stopped.bc.violent + stopped.bc.bulge + stopped.bc.other +
+                     suspect.age + suspect.sex + suspect.build + suspect.height + suspect.weight + 
+                     inside + radio.run + observation.period + day + month + time.period + city + suspect.race, 
+                     family = "binomial", data = sqf.data.12thru14)
+
+#predict probabilities
+# 1. generate predictions for test set
+sqf.data.2015$predicted.probability <- predict(force.wall_model, newdata = sqf.data.2015, type='response') 
+
+# make performance plot
+plot.data <- sqf.data.2015 %>% arrange(desc(predicted.probability)) %>% 
+  mutate(numstops = row_number(), percent.outcome = cumsum(force.wall)/sum(force.wall),
+         stops = numstops/n()) %>% select(stops, percent.outcome)
+
+# create performance plot
+theme_set(theme_bw())
+pp <- ggplot(data=plot.data, aes(x=stops, y=percent.outcome)) 
+pp <- pp + geom_line()
+pp <- pp + scale_x_log10('\nPercent of stops', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
+                       labels=c('0.3%','1%','3%','10%','30%','100%'))
+pp <- pp + scale_y_continuous("Percent of instances of suspect held against a wall", limits=c(0, 1), labels=scales::percent)
+pp
+
+
+# 3) make calibration plot
+plot.data <- sqf.data.2015  %>% mutate(calibration = round(100*predicted.probability)) %>% 
+  group_by(calibration) %>% summarize(model.estimate = mean(predicted.probability),
+                                      numstops = n(),
+                                      empirical.estimate = mean(force.wall))
+
+# create and save plot
+cp <- ggplot(data = plot.data, aes(y=empirical.estimate, x=model.estimate))
+cp <- cp + geom_point(alpha=0.5, aes(size=numstops))
+cp <- cp + scale_size_area(guide='none', max_size=15)
+cp <- cp + geom_abline(intercept=0, slope=1, linetype="dashed")
+cp <- cp + scale_y_log10('Empirical probability \n', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
+                       labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
+cp <- cp + scale_x_log10('\nModel estimated probability', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
+                       labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
+cp
+```
+
+For our second classifier, 
+ we used a logistic regression model
+ to predict whether or not the individual was held up against a wall
+ (very similar to the original model,
+ but adding in variables denoting borough and race).
+The training set consist of data from years 2012-2014, 
+ and the test set with which we evaluated the model was data from 2015.
+First, it is worth noting
+ that the actual instances of this kind of force being used is very low (across all the data).
+The performance plot indicates the ratio of
+ actual use of this kind of force to the number of stops;
+ the curve indicates if you were using this model to try and prevent this kind of
+ force after a stop was made, 
+ you would have to intervene on most stops in order to 
+ actually prevent a suspect from being pushed up against a wall,
+ and in most instances, this wouldn't have otherwise happened.
+The calibration plot compares the model probability to the actual probability -
+ here, most points do not fall on the 45 degree line, 
+ as they would if the model were doing a better job predicting actual instances of suspects
+ forced against a wall after a stop.
+Most of the points are above the line,
+ indicating that the model underestimates the empirical probability
+ of this occurrence.
+
+## Answer 2C: Model 3 [Ravi B. Sojitra]
+``` {r}
 ```
