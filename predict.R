@@ -113,8 +113,8 @@ notfound.weapon.idxs <- which(not.na.rows.2009$found.weapon == FALSE)
 True.2009.sample <- sample(found.weapon.idxs, 10000, replace = TRUE)
 False.2009.sample <- sample(notfound.weapon.idxs, 10000, replace = TRUE)
 
-ProbCompare <- sqf.data.2009[True.2009.sample,'predicted.probability'] > sqf.data.2009[False.2009.sample,"predicted.probability"]
-sum(ProbCompare)/nrow(ProbCompare)
+ProbCompare <- not.na.rows.2009$predicted.probability[True.2009.sample] > not.na.rows.2009$predicted.probability[False.2009.sample]
+mean(ProbCompare)
 
 
 #-------------------------------------------------------
