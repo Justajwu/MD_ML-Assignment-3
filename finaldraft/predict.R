@@ -390,14 +390,153 @@ cp
 
 # Part 2C RAVI SOJITRA
 
-training.set <- sqf_08_16 %>%
-  filter(year %in% 2008:2013)
+## Answer 2C: Model 3 [Ravi B. Sojitra]
+# Prep data for modeling (convert to factors and standardize)
+ravi.data <- sqf_08_16 %>%
+  filter (is.na(arrested) == FALSE) %>%
+  mutate(suspect.race = as.factor(suspect.race), # Factors.
+         suspect.build = as.factor(suspect.build),
+         suspect.sex = as.factor(suspect.sex),
+         location.housing = as.factor(location.housing),
+         day = as.factor(day),
+         month = as.factor(month),
+         time.period = as.factor(time.period),
+         precinct = as.factor(precinct)) %>%
+  mutate(suspect.height = standardize(suspect.height), # Standardize.
+         suspect.weight = standardize(suspect.weight),
+         suspect.age = standardize(suspect.age),
+         observation.period = standardize(observation.period))
 
-testing.set <- sqf_08_16 %>%
-  filter((year %in% 2014:2018) & 
-           (arrested != 'NA')
-  )
+training.set <- ravi.data %>%
+  filter(year %in% 2009:2012)
+
+testing.set <- ravi.data %>%
+  filter(year %in% 2013:2016) #&  arrested != 'NA')
+
+ravi.model <- glm(arrested ~
+                    additional.associating
+                  + additional.direction
+                  + additional.evasive
+                  + additional.highcrime
+                  + additional.investigation
+                  + additional.other
+                  + additional.proximity
+                  + additional.report
+                  + additional.sights
+                  + additional.time
+                  + city
+                  + day
+                  + inside
+                  + location.housing
+                  + month
+                  + observation.period
+                  + officer.uniform
+                  + radio.run
+                  + stopped.bc.bulge
+                  + stopped.bc.casing
+                  + stopped.bc.clothing
+                  + stopped.bc.desc
+                  + stopped.bc.drugs 
+                  + stopped.bc.furtive
+                  + stopped.bc.lookout
+                  + stopped.bc.object
+                  + stopped.bc.other
+                  + stopped.bc.violent
+                  + suspect.age
+                  + suspect.build
+                  + suspect.eye
+                  + suspect.hair
+                  + suspect.height
+                  + suspect.sex
+                  + suspect.weight
+                  + suspect.race
+                  + time.period,
+                  
+                  data=training.set,
+                  family ='binomial'
+)
+
+__Predict probabilities of arrest for test data, and generate data for performance & calibration plots.__
+ravi.model.test.predictedps <- predict(ravi.model,
+                                       newdata = testing.set,
+                                       type='response') 
+ravi.performance.data <- testing.set %>%
+  arrange(desc(ravi.model.test.predictedps)) %>% 
+  mutate(numstops = row_number(),
+         percent.outcome = cumsum(arrested) / sum(arrested),
+         stops = numstops/n()) %>% 
+  select(stops, percent.outcome)
+
+ravi.calibration.data <- testing.set  %>%
+  mutate(calibration = round(100 * ravi.model.test.predictedps)) %>% 
+  group_by(calibration) %>% summarize(model.estimate = mean(ravi.model.test.predictedps),
+                                      numstops = n(),
+                                      empirical.estimate = mean(arrested))
+
+# ravi.calibration.data <- ravi.calibration.data[as.vector(!is.na(ravi.calibration.data))]
+
+
+# __Performance Plot__
+ticks <- c(.003,.01,.03,.1,.3,1)
+tick.labels <- c('0.3%','1%','3%','10%','30%','100%')
+
+theme_set(theme_bw())
+ravi.plot <- ggplot(data=ravi.performance.data,
+                    aes(x=stops, y=percent.outcome))
+ravi.plot <- ravi.plot + geom_line()
+ravi.plot <- ravi.plot + scale_x_log10('\nPercent of stops',
+                                       limits=c(0.003, 1),
+                                       breaks=ticks, 
+                                       labels=tick.labels)
+ravi.plot <- ravi.plot + scale_y_log10('\nPercent Arrest',
+                                       limits=c(0.003, 1),
+                                       breaks=ticks, 
+                                       labels=tick.labels)
+ravi.plot <- ravi.plot + geom_abline(slope=1, intercept=0, linetype='dotted')
+ravi.plot
+
+# __Calibration Plot__
+ravi.plot <- ggplot(data = ravi.calibration.data, aes(y=empirical.estimate, x=model.estimate))
+ravi.plot <- ravi.plot + geom_point(alpha=0.5, aes(size=numstops))
+ravi.plot <- ravi.plot + scale_size_area(guide='none', max_size=15)
+ravi.plot <- ravi.plot + geom_abline(intercept=0, slope=1, linetype="dashed")
+ravi.plot <- ravi.plot + scale_y_log10('Empirical probability \n',
+                                       limits=c(.001,1),
+                                       breaks=ticks, 
+                                       l  abels=tick.labels)
+ravi.plot <- ravi.plot + scale_x_log10('\nModel estimated probability',
+                                       limits=c(.001,1),
+                                       breaks=ticks, 
+                                       labels=tick.labels)
+ravi.plot
+
+# For our third classifier, 
+# we used a linear regression model to predict the likelihood 
+# of arrest.
+# Using predictors similar to what we used in class as well as others
+# such as eye color,
+# we used various continuous and categorical variables to perform 
+# the classificaiton.
+# Because we are predicting whether an arrest is made, 
+# there are more variables that can be used as predictors compared to
+# response variables that are about events that happen before the arrest
+# (e.g. if we were to predict an individual's stopped,
+#   we cannot use the `stopped.bc*` 
+#   variables because that information is collected after the fact).
+# For the train and test split, 
+#  we trained the model on data from 2009 through 2012 
+#  and tested the model on data from 2013 through 2016.
+# Plotting the performance with both axes on approximately log-scale,
+#  we see that following the model's recommendation would yield a larger
+#  proportion of arrests per stop, which
+#  implies that these may be officers arresting a group of people when 
+#  at least one of them.
+# The calibration curve indicates that the model is underestimating
+#  the probability of arrest for the bulk of individuals,
+#  though there are some who have been an overestimated probability
+#  with respect to the empirical distribution.
 
 #------------------------------------------------------------------------------
+
 
 
