@@ -71,6 +71,18 @@ sqf2008_model$coefficients %>%
 #compared to if they were stopped at home.
 
 #II.
+#calculate standarized values for information provided
+
+age <- (30-mean(sqf.data$suspect.age, na.rm = TRUE))/sd(sqf.data$suspect.age, na.rm=TRUE)
+
+weight <- (165-mean(sqf.data$suspect.weight, na.rm = TRUE))/sd(sqf.data$suspect.weight, na.rm = TRUE)
+
+height <- (6-mean(sqf.data$suspect.height, na.rm = TRUE))/sd(sqf.data$suspect.height, na.rm = TRUE)
+
+op <- (10-mean(sqf.data$observation.period, na.rm = TRUE))/sd(sqf.data$observation.period, na.rm = TRUE)
+
+#create data frame from model coefficients
+
 results1 <- as.data.frame(coef(sqf2008_model))
 results <-transpose(results1)
 colnames(results) <- rownames(results1)
@@ -243,12 +255,36 @@ James.p2
 
 
 #C)Lauren C
-
-#Filter to only year = 2012-2014. This is our training set.
-sqf.data.12thru14 <- sqf.data %>% filter(year == 2012:2014) 
+#Filter to only year = 2012-2014 & convert variable types to factors as necessary and standardize real-value variables. This is our training set.
+sqf.data.12thru14 <- sqf.data %>% filter(year == 2012:2014) %>% 
+  mutate(suspect.race = as.factor(suspect.race), 
+         suspect.build = as.factor(suspect.build),
+         suspect.sex = as.factor(suspect.sex),
+         location.housing = as.factor(location.housing),
+         day = as.factor(day),
+         month = as.factor(month),
+         time.period = as.factor(time.period),
+         precinct = as.factor(precinct)) %>%
+  mutate(suspect.height = standardize(suspect.height),
+         suspect.weight = standardize(suspect.weight),
+         suspect.age = standardize(suspect.age),
+         observation.period = standardize(observation.period))
   
 #Filter to only year = 2015/ This is is our test set.
-sqf.data.2015 <- sqf.data %>% filter(year == 2015)%>% filter(force.wall != "NA")
+sqf.data.2015 <- sqf.data %>% filter(year == 2015)%>% 
+%>% 
+  mutate(suspect.race = as.factor(suspect.race), 
+         suspect.build = as.factor(suspect.build),
+         suspect.sex = as.factor(suspect.sex),
+         location.housing = as.factor(location.housing),
+         day = as.factor(day),
+         month = as.factor(month),
+         time.period = as.factor(time.period),
+         precinct = as.factor(precinct)) %>%
+  mutate(suspect.height = standardize(suspect.height),
+         suspect.weight = standardize(suspect.weight),
+         suspect.age = standardize(suspect.age),
+         observation.period = standardize(observation.period))
   
 #build model to predict whether an officer puts individual against a wall
 
@@ -288,18 +324,29 @@ plot.data <- sqf.data.2015  %>% mutate(calibration = round(100*predicted.probabi
                                       empirical.estimate = mean(force.wall))
 
 # create and save plot
-p <- ggplot(data = plot.data, aes(y=empirical.estimate, x=model.estimate))
-p <- p + geom_point(alpha=0.5, aes(size=numstops))
-p <- p + scale_size_area(guide='none', max_size=15)
-p <- p + geom_abline(intercept=0, slope=1, linetype="dashed")
-p <- p + scale_y_log10('Empirical probability \n', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
+cp <- ggplot(data = plot.data, aes(y=empirical.estimate, x=model.estimate))
+cp <- cp + geom_point(alpha=0.5, aes(size=numstops))
+cp <- cp + scale_size_area(guide='none', max_size=15)
+cp <- cp + geom_abline(intercept=0, slope=1, linetype="dashed")
+cp <- cp + scale_y_log10('Empirical probability \n', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
                        labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
-p <- p + scale_x_log10('\nModel estimated probability', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
+cp <- cp + scale_x_log10('\nModel estimated probability', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
                        labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
-p
+cp
 
 
-
+#Using whether or not the individual was subject to the specific kind use force described as being held up against a wall as a classifier,
+#we used logistic regression and a set of covariates (very similar to the original model, but adding in variables denoting borough and race) 
+#on a set of training data using years 2012-2014 to estimate a function by which to predict the probability that a person was subject to a 
+#specific use of force, and tested out this function on a test dataset using year 2015, to evaluate the model. First, it is worth noting 
+#that the actual instances of this kind of force being used is very low (across all the data). The performance plot indicates the ratio of 
+#actual use of this kind of force to the number of stops; the curve indicates if you were using this model to try and prevent this kind of 
+#force after a stop was made, you'd have to intervene on most stops in order to actually prevent a suspect from being pushed up against a wall, 
+#and in most instances, this wouldn't have otherwise happened.  The calibration plot compares the model probability to the actual probability - 
+#here, most points do not fall on the 45 degree line, as they would if the model were doing a better job predicting actual instances of suspects
+#forced against a wall after a stop. Most of the points are above the line, indicating that the model underestimates the empirical probability 
+#of this occurrence.
+#
 
 #
 #------------------------------------------------------------------------------
