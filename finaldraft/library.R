@@ -1,17 +1,9 @@
-#library(memisc)
-#library(foreign)
-#library(Hmisc)
-#library(doParallel)
-#library(foreach)
-#library(data.table)
-#library(ggmap)
-#library(proj4)
-#library(maptools) 
-#library(gpclib)
-#library(sp)
-#library(spatstat)
-#library(rgdal)
-#library(randomForest)
+# James Wu, Lauren Broffman, Ravi Sojitra
+# Professor: Ravi Shroff
+# Messy Data and Machine Learning
+# Due: October 25, 2018
+# Usage: Be sure to set the 5 directories/filepaths for your machine (below).
+
 library(tidyverse)
 library(lubridate)
 library(ROCR)

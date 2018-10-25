@@ -433,4 +433,70 @@ Most of the points are above the line,
 
 ## Answer 2C: Model 3 [Ravi B. Sojitra]
 ``` {r}
+training.set <- sqf_08_16 %>%
+  filter(year %in% 2008:2013)
+
+testing.set <- sqf_08_16 %>%
+  filter((year %in% 2014:2018) & 
+           (arrested != 'NA')
+  )
+
+# Prep data for modeling (convert to factors and standardize)
+ravi.data <- sqf_08_16 %>%
+                 filter (is.na(arrested) == FALSE) %>%
+                  mutate(suspect.race = as.factor(suspect.race), # Factors.
+                         suspect.build = as.factor(suspect.build),
+                         suspect.sex = as.factor(suspect.sex),
+                         location.housing = as.factor(location.housing),
+                         day = as.factor(day),
+                         month = as.factor(month),
+                         time.period = as.factor(time.period),
+                         precinct = as.factor(precinct)) %>%
+                  mutate(suspect.height = standardize(suspect.height), # Standardize.
+                         suspect.weight = standardize(suspect.weight),
+                         suspect.age = standardize(suspect.age),
+                         observation.period = standardize(observation.period))
+
+ravi.model <- glm(arrested ~
+                  additional.associating
+                  + additional.direction
+                  + additional.evasive
+                  + additional.highcrime
+                  + additional.investigation
+                  + additional.other
+                  + additional.proximity
+                  + additional.report
+                  + additional.sights
+                  + additional.time
+                  + city
+                  + day
+                  + inside
+                  + location.housing
+                  + month
+                  + observation.period
+                  + officer.uniform
+                  + radio.run
+                  + stopped.bc.bulge
+                  + stopped.bc.casing
+                  + stopped.bc.clothing
+                  + stopped.bc.desc
+                  + stopped.bc.drugs 
+                  + stopped.bc.furtive
+                  + stopped.bc.lookout
+                  + stopped.bc.object
+                  + stopped.bc.other
+                  + stopped.bc.violent
+                  + suspect.age
+                  + suspect.build
+                  + suspect.eye
+                  + suspect.hair
+                  + suspect.height
+                  + suspect.sex
+                  + suspect.weight
+                  + suspect.race
+                  + time.period,
+                  
+                  data=training.set,
+                  family ='binomial'
+)
 ```

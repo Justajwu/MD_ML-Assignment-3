@@ -2,6 +2,7 @@
 # Professor: Ravi Shroff
 # Messy Data and Machine Learning
 # Due: October 25, 2018
+# Usage: Be sure to set the 5 directories/filepaths for your machine (below).
 
 # library(memisc)
 # library(foreign)
