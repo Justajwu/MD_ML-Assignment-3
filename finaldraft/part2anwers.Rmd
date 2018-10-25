@@ -13,7 +13,7 @@ library(data.table)
 library(ROCR)
 
 num.cores <- detectCores()
-registerDoParallel(cores=num.cores)  # 64 cores.
+registerDoParallel(cores=num.cores)
 
 filelocation <- "/home/codas/Documents/Ravi/homework/MD_ML-Assignment-3/finaldraft/sqf_08_16.csv"
 sqf_08_16 <- read_csv(filelocation)
@@ -40,6 +40,16 @@ sqf.data <- sqf.data %>% mutate(suspect.race = as.factor(suspect.race),
                                 month = as.factor(month),
                                 time.period = as.factor(time.period),
                                 precinct = as.factor(precinct))
+
+# Calculting these for a later problem.
+age <- (30-mean(sqf.data$suspect.age, na.rm = TRUE))/sd(sqf.data$suspect.age, na.rm=TRUE)
+
+weight <- (165-mean(sqf.data$suspect.weight, na.rm = TRUE))/sd(sqf.data$suspect.weight, na.rm = TRUE)
+
+height <- (6-mean(sqf.data$suspect.height, na.rm = TRUE))/sd(sqf.data$suspect.height, na.rm = TRUE)
+
+op <- (10-mean(sqf.data$observation.period, na.rm = TRUE))/sd(sqf.data$observation.period, na.rm = TRUE)
+
 #Standardize real-valued variables
 sqf.data <- sqf.data %>% 
   mutate(suspect.height = standardize(suspect.height),
@@ -90,7 +100,7 @@ sqf2008_model$coefficients %>%
 
 ## Answer 2AI
 
-__The log odds of a stopped person carrying a weapon is increased by 2.59 if they are stopped in transit compared to if they were stopped at home.__
+__The log odds of a stopped person carrying a weapon is increased by 2.59 if they are stopped in transit compared to if they were stopped at home, holding everything else constant.__
 
 ## Question 2AII
 
@@ -108,14 +118,6 @@ my friend were a woman, everything else being equal?
 ## Answer 2AII
 
 ``` {r}
-age <- (30-mean(sqf.data$suspect.age, na.rm = TRUE))/sd(sqf.data$suspect.age, na.rm=TRUE)
-
-weight <- (165-mean(sqf.data$suspect.weight, na.rm = TRUE))/sd(sqf.data$suspect.weight, na.rm = TRUE)
-
-height <- (6-mean(sqf.data$suspect.height, na.rm = TRUE))/sd(sqf.data$suspect.height, na.rm = TRUE)
-
-op <- (10-mean(sqf.data$observation.period, na.rm = TRUE))/sd(sqf.data$observation.period, na.rm = TRUE)
-
 #create data frame from model coefficients
 
 results1 <- as.data.frame(coef(sqf2008_model))
@@ -130,15 +132,16 @@ logit = results$Intercept + results$location.housingtransit + results$additional
 #calculate probability for male
 odds <- exp(logit)
 
-paste('the probability that he would be found with a weapon is', (odds / (1 + odds))) 
-#I don't think we are supposed to calculate the formula by substracting from 1, but otherwise the odds are way too high...
+paste('According to the model, the probability that he would be found with a weapon is',
+      (odds / (1 + odds)))
 
 #plug values into  logit (adding coefficient for female)
 logitf = logit - results$suspect.sexmale
 
 odds1 <- exp(logitf)
 
-paste(', the probability that SHE would be found with a weapon is', (odds1 / (1 + odds1))) 
+paste('According to the model, the probability that SHE would be found with a weapon is',
+      (odds1 / (1 + odds1))) 
 ```
 
 ## Question 2AIII
@@ -196,14 +199,17 @@ this might be happening, and what one might do about it.
 #Create a dataframe with the two axis
 model2008_AUCs <- data.frame(year = 2009:2016, AUC = rep(NA,8))
 
+#Keep only the precinct levels consistent from 2008
+Precincts.2008 <- unique(sqf.data.2008$precinct)
+
 #Calculate AUC for every year
 for(i in model2008_AUCs$year){
-  temp.df <- sqf.data %>% filter(year == i &)
+  temp.df <- sqf.data %>% filter(year == i, precinct %in% Precincts.2008)
   
   test.predicted.probability <- predict(sqf2008_model, newdata = temp.df, type='response')
   test.pred <- prediction(test.predicted.probability, temp.df$found.weapon)
   test.perf <- performance(test.pred, "auc")
-
+  
   model2008_AUCs[which(model2008_AUCs$year == i),2] <- test.perf@y.values[[1]]
 }
 
@@ -214,6 +220,18 @@ p +
   geom_point()+
   xlab("year")
 ```
+
+We see the AUC steadily dropping as the years incrase after 2008, 
+ which indicates that the model overfit on at least some predictors 
+ that changed in distribution after 2008---
+ for example, predictors influenced by exogenous changes in policy and people.
+Although the AUC does decrease,
+ it remains above 0.50, 
+ implying that it does better than complete randomness (no model).
+This may be improved if we had used more years for our training data or 
+ constructed a better model of the relationship between the predictors based on
+ prior knowledge of the data generating process.
+
 
 ## Question 2C
 
@@ -272,9 +290,9 @@ plot.data <- James.test %>% arrange(desc(predicted.probability)) %>%
 theme_set(theme_bw())
 James.p1 <- ggplot(data=plot.data, aes(x=stops, y=percent.outcome)) 
 James.p1 <- James.p1 + geom_line()
-James.p1 <- James.p1 + scale_x_log10('\nPercent of stops', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
+James.p1 <- James.p1 + scale_x_log10('\nProportion stopped with estimated probability', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
                                      labels=c('0.3%','1%','3%','10%','30%','100%'))
-James.p1 <- James.p1 + scale_y_continuous("Percent of contraband recovered", limits=c(0, 1), labels=scales::percent)
+James.p1 <- James.p1 + scale_y_continuous("Percent of stops for which contraband is recovered (corresponding model recall)", limits=c(0, 1), labels=scales::percent)
 James.p1
 
 #Calibration plot
@@ -297,32 +315,31 @@ James.p2 <- James.p2 + scale_x_log10('\nModel estimated probability', limits=c(.
 James.p2
 ```
 
-For our first classifier, 
- we use a logistic regression model with
- `found.contraband` as the response variable.
-To do this, we first subsetted the full dataset to only include 
- criminal possession or sale of 'marihuana' 
- and 'controlled substance' as suspected reasons.
-We want to build a model to predict when anything is found,
- in the situations when 
- police stop someone with the suspicion of drugs, 
- they find anything.
-The training set comprises of the data from 2008-2010 and the test data is 2011 data,
- with the assumption that going further out would make the results less accurate.
-For this model, we used the following predictors:
- - precinct;
- - whether the stop occurred in transit, housing, or on the street;
- - the ten additional stop circumstances (additional.*);
- - the ten primary stop circumstances (stopped.bc.*);
- - suspect age, race, build, sex, height , and weight;
- - whether the stop occurred inside, and whether the stop was the result of a radio call;
- - length of observation period;
- - day, month, and time of day
-The model is not obviously good.
-The performance plot shows that a little increase in stops is not a
- a one-to-one increase to the percentage of contraband recovered.
-The calibration plot shows that our
- model is mostly underestimating the actual found contrabands.
+We decided to use `found.contraband` as our first classifier, 
+ for which we first subsetted (i.e. conditioned) the data from 2008-2010 to only include
+ entries for suspicision of criminal possession or sale of 'marihuana' and 'controlled substance'.
+We wanted to build a model that predicts the likelihood contraband is found given that
+ the stop was motivated by a suspicsion for suspicision of criminal possession or sale
+  of 'marihuana' and 'controlled substance'.
+The training set is comprised of data from 2008-2010 and
+ the test data is 2011 data, 
+ with the assumption that going further out would make the results less accurate due to 
+ unmeasured predictors.
+We fitted parametesr of a linear regression model on:
+ -precinct;
+ -whether the stop occurred in transit, housing, or on the street;
+ -the ten additional stop circumstances (additional.*);
+ -the ten primary stop circumstances (stopped.bc.*);
+ -suspect age, race, build, sex, height , and weight;
+ -whether the stop occurred inside, and whether the stop was the result of a radio call;
+ -length of observation period;
+ -day, month, and time of day.
+The performance plot tells us how many positive cases we actually 'caught' (recall) 
+ versus each of 100 thresholds of the predicted probabilities.
+The curve suggests that when our predicted probability was at a low threshold,
+ our recall was low; in other words, we missed a lot of the positive cases.
+However, as probability threshholds increased, the model performed much better.
+The calibration plot indicates the model is mostly underestimating the actual found contrabands.
 
 
 ## Answer 2C: Model 2 [Lauren Broffman]
@@ -360,7 +377,7 @@ sqf.data.2015 <- sqf_08_16 %>% filter(year == 2015) %>%
   
 #build model to predict whether an officer puts individual against a wall
 
-force.wall_model <- glm(formula = force.wall ~ 1 +  location.housing + additional.report +
+force.wall_model <- glm(formula = force.wall ~ location.housing + additional.report +
                      additional.investigation + additional.proximity + additional.evasive + 
                      additional.associating + additional.direction + additional.highcrime + additional.time +
                      additional.sights + additional.other + stopped.bc.object + stopped.bc.desc +
@@ -383,11 +400,10 @@ plot.data <- sqf.data.2015 %>% arrange(desc(predicted.probability)) %>%
 theme_set(theme_bw())
 pp <- ggplot(data=plot.data, aes(x=stops, y=percent.outcome)) 
 pp <- pp + geom_line()
-pp <- pp + scale_x_log10('\nPercent of stops', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
+pp <- pp + scale_x_log10('\nProportion stopped with estimated probability', limits=c(0.003, 1), breaks=c(.003,.01,.03,.1,.3,1), 
                        labels=c('0.3%','1%','3%','10%','30%','100%'))
-pp <- pp + scale_y_continuous("Percent of instances of suspect held against a wall", limits=c(0, 1), labels=scales::percent)
+pp <- pp + scale_y_continuous("Percent of instances of suspect held against a wall (corresponding model recall)", limits=c(0, 1), labels=scales::percent)
 pp
-
 
 # 3) make calibration plot
 plot.data <- sqf.data.2015  %>% mutate(calibration = round(100*predicted.probability)) %>% 
@@ -407,29 +423,23 @@ cp <- cp + scale_x_log10('\nModel estimated probability', limits=c(.001,1), brea
 cp
 ```
 
-For our second classifier, 
- we used a logistic regression model
- to predict whether or not the individual was held up against a wall
- (very similar to the original model,
- but adding in variables denoting borough and race).
-The training set consist of data from years 2012-2014, 
- and the test set with which we evaluated the model was data from 2015.
-First, it is worth noting
- that the actual instances of this kind of force being used is very low (across all the data).
-The performance plot indicates the ratio of
- actual use of this kind of force to the number of stops;
- the curve indicates if you were using this model to try and prevent this kind of
- force after a stop was made, 
- you would have to intervene on most stops in order to 
- actually prevent a suspect from being pushed up against a wall,
- and in most instances, this wouldn't have otherwise happened.
-The calibration plot compares the model probability to the actual probability -
- here, most points do not fall on the 45 degree line, 
- as they would if the model were doing a better job predicting actual instances of suspects
- forced against a wall after a stop.
-Most of the points are above the line,
- indicating that the model underestimates the empirical probability
- of this occurrence.
+Using whether or not the individual was subject to the specific kind use force described #as being held up against a wall as a classifier, we used logistic regression and a set of
+covariates (very similar to the original model, but adding in variables denoting borough
+and race) on a set of training data using years 2012-2014 to estimate a function by
+which to predict the probability that a person was subject to a specific use of force, and
+tested out this function on a test dataset using year 2015, to evaluate the model. First,
+it is worth noting that the actual instances of this kind of force being used is very low
+(across all the data). The performance plot is almost identical to that in the plot for the
+first model. Again, the performance plot tells us how many positive cases we actually
+'caught' (recall) over all the thresholds of the predicted probabilities. Just like with the
+first model, the curve suggests that when our predicted probability was at a low
+threshold, our recall was low; in other words, we missed a lot of the positive cases.
+However, as probability threshholds increased, the model performed much better. The
+calibration plot compares the model probability to the actual probability - here,
+most points do not fall on the 45 degree line, as they would if the model were doing a better
+job predicting actual instances of suspects forced against a wall after a stop. Most of
+the points are above the line, indicating that the model underestimates the empirical
+probability of this occurrence.
 
 ## Answer 2C: Model 3 [Ravi B. Sojitra]
 ``` {r}
@@ -449,139 +459,113 @@ ravi.data <- sqf_08_16 %>%
                          suspect.age = standardize(suspect.age),
                          observation.period = standardize(observation.period))
 
-training.set <- ravi.data %>%
-  filter(year %in% 2009:2012)
+training.set <- ravi.data %>% filter(year %in% 2008:2010)
+testing.set <- ravi.data %>% filter(year %in% 2011)
 
-testing.set <- ravi.data %>%
-  filter(year %in% 2013:2016) #&  arrested != 'NA')
-
-ravi.model <- glm(arrested ~
-                  additional.associating
-                  + additional.direction
-                  + additional.evasive
-                  + additional.highcrime
-                  + additional.investigation
-                  + additional.other
-                  + additional.proximity
-                  + additional.report
-                  + additional.sights
-                  + additional.time
-                  + city
-                  + day
-                  + inside
-                  + location.housing
-                  + month
-                  + observation.period
-                  + officer.uniform
-                  + radio.run
-                  + stopped.bc.bulge
-                  + stopped.bc.casing
-                  + stopped.bc.clothing
-                  + stopped.bc.desc
-                  + stopped.bc.drugs 
-                  + stopped.bc.furtive
-                  + stopped.bc.lookout
-                  + stopped.bc.object
-                  + stopped.bc.other
-                  + stopped.bc.violent
-                  + suspect.age
-                  + suspect.build
-                  + suspect.eye
-                  + suspect.hair
-                  + suspect.height
-                  + suspect.sex
-                  + suspect.weight
-                  + suspect.race
-                  + time.period,
-                  
-                  data=training.set,
-                  family ='binomial'
-)
+ravi.model <- glm(formula = arrested ~ 
+                     1 + precinct + location.housing + additional.report +
+                     additional.investigation + additional.proximity + additional.evasive + 
+                     additional.associating + additional.direction + additional.highcrime 
+                     + additional.time +
+                     additional.sights + additional.other + stopped.bc.object + stopped.bc.desc +
+                     stopped.bc.casing + stopped.bc.lookout + stopped.bc.clothing + stopped.bc.drugs +
+                     stopped.bc.furtive + stopped.bc.violent + stopped.bc.bulge + stopped.bc.other +
+                     suspect.age + suspect.sex + suspect.build + suspect.height + suspect.weight +
+                     suspect.race + suspect.hair +inside + radio.run + observation.period + day + month + time.period, 
+                   family = "binomial",data = training.set)
 ```
 
-__Predict probabilities of arrest for test data, and generate data for performance & calibration plots.__
-```{r}
-ravi.model.test.predictedps <- predict(ravi.model,
-                                       newdata = testing.set,
-                                       type='response') 
+``` {r}
+ticks = c(.003,.01,.03,.1,.3,1)
+ticklabels = c('0.3%','1%','3%','10%','30%','100%')
 
-testing.set <- testing.set[!is.na(ravi.model.test.predictedps),]
-ravi.model.test.predictedps <- ravi.model.test.predictedps[!is.na(ravi.model.test.predictedps)]
+performance.xlabel <- '\nProportion stopped with estimated probability'
+performance.ylabel <- 'Percent Arrested (i.e. corresponding model recall)'
+calibration.xlabel <- '\nModel estimated probability'
+calibration.ylabel <- 'Empirical probability \n'
 
+
+testing.set$predictedps <- predict(ravi.model, newdata = testing.set, type='response') 
+```
+
+``` {r}
 ravi.performance.data <- testing.set %>%
-             arrange(desc(ravi.model.test.predictedps)) %>% 
-             mutate(numstops = row_number(),
-                    percent.outcome = cumsum(arrested) / sum(arrested),
-                    stops = numstops/n()) %>% 
-             select(stops, percent.outcome)
-
-ravi.calibration.data <- testing.set  %>%
-                         mutate(calibration = round(100 * ravi.model.test.predictedps)) %>% 
-                         group_by(calibration) %>%
-                         summarize(model.estimate = mean(ravi.model.test.predictedps),
-                                                        numstops = n(),
-                                                        empirical.estimate = mean(arrested))
+                             arrange(desc(predictedps)) %>% 
+                             mutate(numstops = row_number(),
+                                    percent.outcome = cumsum(arrested)/sum(arrested),
+                                    stops = numstops/n()
+                             ) %>%
+                             select(stops, percent.outcome)
+ravi.calibration.data <- testing.set %>%
+                             mutate(calibration=round(100 * predictedps)) %>%
+                             group_by(calibration) %>%
+                             summarize(model.estimate = mean(predictedps),
+                                       numstops = n(),
+                                       empirical.estimate = mean(arrested))
 ```
-
-__Performance Plot__
 ``` {r}
-ticks <- c(.003,.01,.03,.1,.3,1)
-tick.labels <- c('0.3%','1%','3%','10%','30%','100%')
-
 theme_set(theme_bw())
-ravi.plot <- ggplot(data=ravi.performance.data,
-                    aes(x=stops, y=percent.outcome))
-ravi.plot <- ravi.plot + geom_line()
-ravi.plot <- ravi.plot + scale_x_log10('\nPercent of stops',
-                                       limits=c(0.003, 1),
-                                       breaks=ticks, 
-                                       labels=tick.labels)
-ravi.plot <- ravi.plot + scale_y_log10('\nPercent Arrest',
-                                       limits=c(0.003, 1),
-                                       breaks=ticks, 
-                                       labels=tick.labels)
-ravi.plot <- ravi.plot + geom_abline(slope=1, intercept=0, linetype='dotted')
-ravi.plot
+ravi.performance.plot <- ggplot(data=ravi.performance.data,
+                                aes(x=stops, y=percent.outcome)) 
+ravi.performance.plot <- ravi.performance.plot + geom_line()
+ravi.performance.plot <- ravi.performance.plot + scale_x_log10(performance.xlabel,
+                                                               limits=c(0.003, 1),
+                                                               breaks=ticks, 
+                                                               labels=ticklabels)
+ravi.performance.plot <- ravi.performance.plot + scale_y_continuous(performance.ylabel,
+                                                                    limits=c(0, 1), labels=scales::percent)
+ravi.performance.plot
 ```
 
-__Calibration Plot__
 ``` {r}
-ravi.plot <- ggplot(data = ravi.calibration.data, aes(y=empirical.estimate, x=model.estimate))
-ravi.plot <- ravi.plot + geom_point(alpha=0.5, aes(size=numstops))
-ravi.plot <- ravi.plot + scale_size_area(guide='none', max_size=15)
-ravi.plot <- ravi.plot + geom_abline(intercept=0, slope=1, linetype="dashed")
-ravi.plot <- ravi.plot + scale_y_log10('Empirical probability \n',
-                                       limits=c(.001,1),
-                                         breaks=ticks, 
-                               labels=tick.labels)
-ravi.plot <- ravi.plot + scale_x_log10('\nModel estimated probability',
-                                       limits=c(.001,1),
-                                       breaks=ticks, 
-                          labels=tick.labels)
-ravi.plot
-
+# create and save plot
+ravi.calibration.plot <- ggplot(data = ravi.calibration.data,
+                                aes(y=empirical.estimate, x=model.estimate))
+ravi.calibration.plot <- ravi.calibration.plot + 
+                             geom_point(alpha=0.5, aes(size=numstops))
+ravi.calibration.plot <- ravi.calibration.plot +
+                             scale_size_area(guide='none', max_size=15)
+ravi.calibration.plot <- ravi.calibration.plot +
+                             geom_abline(intercept=0, slope=1, linetype="dashed")
+ravi.calibration.plot <- ravi.calibration.plot + 
+                             scale_y_log10(calibration.ylabel,
+                             limits=c(.001,1),
+                             breaks=ticks, 
+                             labels=ticklabels)
+ravi.calibration.plot <- ravi.calibration.plot + 
+                             scale_x_log10(calibration.xlabel,
+                             limits=c(.001,1),
+                             breaks=ticks, 
+                             labels=ticklabels)
+ravi.calibration.plot
 ```
 
 For our third classifier, 
- we used a linear regression model to predict the likelihood 
+ we used a logistic regression model to predict the likelihood 
  of arrest.
-Using predictors similar to what we used in class as well as others
- such as eye color,
- we used various continuous and categorical variables to perform 
+Using predictors similar to what we used in class as well as others such as
+ hair color, we used various continuous and categorical variables to perform 
  the classificaiton.
 Because we are predicting whether an arrest is made, 
  there are more variables that can be used as predictors compared to
  response variables that are about events that happen before the arrest
  (e.g. if we were to predict an individual's stopped,
   we cannot use the `stopped.bc*` 
-  variables because that information is collected after the fact).
+  variables because that information is collected after the fact), 
+ which may be potentially useful for training a better model.
 For the train and test split, 
- we trained the model on data from 2009 through 2012 
- and tested the model on data from 2013 through 2016.
-Plotting the performance with both axes on approximately log-scale,
- we see that following the model's recommendation would yield a larger
- pr
- 
- ``` {r}
- plot(sort(ravi.model.test.predictedps)[1:1000])
- ```
+ we trained the model on data from 2008 to 2010 
+ and tested the model on data from 2011.
+Plotting the performance
+ reveals that following the model's recommendation may yield a large
+ rate of arrests per percent increase in model certainty, at low thresholds;
+ however, in general the recall is pretty poor (i.e. at low thresholds,
+ people are more likely not to be arrested given they are stopped).
+Compared to the first two models' calibration plots,
+ this calibration plot reveals that the model certainty
+ is better aligned with the empirical probilities of arrest, 
+ since most of the data lies on the slope = 1 line.
+However, it is important to note that the model does overestimate
+ certainty at high thresholds and underestimates certainty
+ at low thresholds.
+ most of the points do not sit exactly on the slope = 1 line.
