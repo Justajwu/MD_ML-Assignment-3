@@ -504,6 +504,10 @@ __Predict probabilities of arrest for test data, and generate data for performan
 ravi.model.test.predictedps <- predict(ravi.model,
                                        newdata = testing.set,
                                        type='response') 
+
+testing.set <- testing.set[!is.na(ravi.model.test.predictedps),]
+ravi.model.test.predictedps <- ravi.model.test.predictedps[!is.na(ravi.model.test.predictedps)]
+
 ravi.performance.data <- testing.set %>%
              arrange(desc(ravi.model.test.predictedps)) %>% 
              mutate(numstops = row_number(),
@@ -513,14 +517,10 @@ ravi.performance.data <- testing.set %>%
 
 ravi.calibration.data <- testing.set  %>%
                          mutate(calibration = round(100 * ravi.model.test.predictedps)) %>% 
-  group_by(calibration) %>% summarize(model.estimate = mean(ravi.model.test.predictedps),
-                                      numstops = n(),
-                                      empirical.estimate = mean(arrested))
-```
-
-
-``{r}
-ravi.calibration.data <- ravi.calibration.data[as.vector(!is.na(ravi.calibration.data))]
+                         group_by(calibration) %>%
+                         summarize(model.estimate = mean(ravi.model.test.predictedps),
+                                                        numstops = n(),
+                                                        empirical.estimate = mean(arrested))
 ```
 
 __Performance Plot__
@@ -553,25 +553,13 @@ ravi.plot <- ravi.plot + geom_abline(intercept=0, slope=1, linetype="dashed")
 ravi.plot <- ravi.plot + scale_y_log10('Empirical probability \n',
                                        limits=c(.001,1),
                                          breaks=ticks, 
-                       l  abels=tick.labels)
+                               labels=tick.labels)
 ravi.plot <- ravi.plot + scale_x_log10('\nModel estimated probability',
                                        limits=c(.001,1),
                                        breaks=ticks, 
                           labels=tick.labels)
 ravi.plot
 
-```
-
-``` {r}
-cp <- ggplot(data = ravi.calibration.data, aes(y=empirical.estimate, x=model.estimate))
-cp <- cp + geom_point(alpha=0.5, aes(size=numstops))
-cp <- cp + scale_size_area(guide='none', max_size=15)
-cp <- cp + geom_abline(intercept=0, slope=1, linetype="dashed")
-cp <- cp + scale_y_log10('Empirical probability \n', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
-                       labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
-cp <- cp + scale_x_log10('\nModel estimated probability', limits=c(.001,1), breaks=c(.001,.003,.01,.03,.1,.3,1), 
-                       labels=c('0.1%','0.3%','1%','3%','10%','30%','100%'))
-cp
 ```
 
 For our third classifier, 
@@ -593,3 +581,7 @@ For the train and test split,
 Plotting the performance with both axes on approximately log-scale,
  we see that following the model's recommendation would yield a larger
  pr
+ 
+ ``` {r}
+ plot(sort(ravi.model.test.predictedps)[1:1000])
+ ```
